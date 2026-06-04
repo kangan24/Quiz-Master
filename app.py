@@ -548,9 +548,7 @@ if st.session_state.quiz_submitted:
         st.session_state.history_saved = False
         st.session_state.current_question = 0
         st.session_state.user_answers = {}
-        st.session_state.topic_input = ""
-        st.session_state.difficulty_input = "Easy"
-        st.session_state.num_questions_input = 5
+
         st.session_state.timer_started = False
         st.session_state.quiz_start_time = None
 
@@ -559,8 +557,15 @@ if st.session_state.quiz_submitted:
             for key in list(st.session_state.keys())
             if key.startswith("question_")
         ]
-
         for key in keys_to_remove:
             del st.session_state[key]
+
+        for key in [
+            "topic_input",
+            "difficulty_input",
+            "num_questions_input"
+        ]:
+            if key in st.session_state:
+                del st.session_state[key]
 
         st.rerun()
