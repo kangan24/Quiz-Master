@@ -71,14 +71,27 @@ if "feedback" not in st.session_state:
 if "history_saved" not in st.session_state:
     st.session_state.history_saved = False
 
+if "current_question" not in st.session_state:
+    st.session_state.current_question = 0
+
+if "user_answers" not in st.session_state:
+    st.session_state.user_answers = {}
+
 
 # Generate Quiz
-def generate_quiz(topic, difficulty):
+def generate_quiz(topic, difficulty, num_questions):
 
     prompt = f"""
-    Generate exactly 5 MCQ questions about {topic}.
+    Generate exactly {num_questions} MCQ questions about {topic}.
 
     Difficulty: {difficulty}
+
+    IMPORTANT:
+    - Randomize the correct answer position.
+    - The correct answer must NOT always be A.
+    - Distribute answers across A, B, C, and D.
+    - Make incorrect options plausible.
+    - Do not follow predictable answer patterns.
 
     Return ONLY valid JSON in this format:
 
@@ -171,6 +184,7 @@ page = st.sidebar.radio(
     ["🏆 Quiz Arena", "📊 Hall of Fame"]
 )
 
+
 # HISTORY PAGE
 if page == "📊 Hall of Fame":
 
@@ -248,6 +262,7 @@ if page == "📊 Hall of Fame":
 
     st.stop()
 
+
 # QUIZ PAGE
 
 st.title("🏆 QUIZ CHALLENGE")
@@ -260,28 +275,36 @@ and see if you can become the Quiz Champion.
 """)
 
 topic = st.text_input(
-    "📚 Choose Your Quiz Topic"
+    "📚 Choose Your Quiz Topic",
+    key="topic_input"
 )
 
 difficulty = st.selectbox(
     "🎮 Select Difficulty",
-    ["Easy", "Medium", "Hard"]
+    ["Easy", "Medium", "Hard"],
+    key="difficulty_input"
 )
 
-# Generate Quiz Button
+num_questions = st.slider(
+    "📝 Number of Questions",
+    min_value=5,
+    max_value=20,
+    value=5,
+    step=1,
+    key="num_questions_input"
+)
+
+# Generate Quiz
 if st.button("Generate Quiz"):
-
     if not topic:
-
         st.warning("Please enter a topic.")
-
     else:
-
         with st.spinner("Generating Quiz..."):
 
             st.session_state.quiz = generate_quiz(
                 topic,
-                difficulty
+                difficulty,
+                num_questions
             )
 
             st.session_state.quiz_submitted = False
@@ -289,152 +312,211 @@ if st.button("Generate Quiz"):
             st.session_state.percentage = 0
             st.session_state.feedback = ""
             st.session_state.history_saved = False
+            st.session_state.current_question = 0
+            st.session_state.user_answers = {}
 
 
 # Display Quiz
-if st.session_state.quiz:
+if st.session_state.quiz and not st.session_state.quiz_submitted:
+
+    current = st.session_state.current_question
+
+    q = st.session_state.quiz[current]
+
+    st.progress(
+        (current + 1) / len(st.session_state.quiz)
+    )
+
+    st.subheader(
+        f"Question {current + 1}/{len(st.session_state.quiz)}"
+    )
+
+    st.write(q["question"])
+
+    saved_answer = st.session_state.user_answers.get(
+        current,
+        None
+    )
+
+    options = list(q["options"].keys())
+
+    answer = st.radio(
+        "Choose your answer:",
+        options=options,
+        format_func=lambda x:
+            f"{x}. {q['options'][x]}",
+        key=f"question_{current}",
+        index=(
+            options.index(saved_answer)
+            if saved_answer in options
+            else None
+        )
+    )
+
+    if answer is not None:
+        st.session_state.user_answers[current] = answer
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if current > 0:
+
+            if st.button("⬅ Previous"):
+
+                st.session_state.current_question -= 1
+
+                st.rerun()
+
+    with col2:
+
+        if current < len(st.session_state.quiz) - 1:
+
+            if st.button("Next ➡"):
+
+                if answer is None:
+
+                    st.warning(
+                        "Please select an answer."
+                    )
+
+                else:
+
+                    st.session_state.current_question += 1
+                    st.rerun()
+
+        else:
+
+            if st.button("🏁 Finish Quiz"):
+
+                if answer is None:
+
+                    st.warning(
+                        "Please select an answer."
+                    )
+
+                else:
+                    st.session_state.quiz_submitted = True
+                    st.rerun()
+
+
+# results
+if st.session_state.quiz_submitted:
+    score = 0
+    st.subheader("Results")
 
     for i, q in enumerate(
         st.session_state.quiz,
         start=1
     ):
-        st.subheader(f"Question {i}/5")
-
-        st.write(q["question"])
-
-        st.radio(
-            "Choose your answer:",
-            options=list(q["options"].keys()),
-            format_func=lambda x:
-                f"{x}. {q['options'][x]}",
-            key=f"q{i}"
+        user_answer = st.session_state.user_answers.get(
+            i - 1,
+            "Not Answered"
         )
 
-        st.divider()
-
-    # Submit Button
-    if st.button("Submit Quiz"):
-        st.session_state.quiz_submitted = True
-
-    # results
-    if st.session_state.quiz_submitted:
-
-        score = 0
-
-        st.subheader("Results")
-
-        for i, q in enumerate(
-            st.session_state.quiz,
-            start=1
-        ):
-
-            user_answer = st.session_state[f"q{i}"]
-
-            if user_answer == q["answer"]:
-
-                score += 1
-
-                st.success(
-                    f"Question {i}: Correct"
-                )
-
-            else:
-
-                st.error(
-                    f"Question {i}: Wrong"
-                )
-
-                st.write(
-                    f"Your Answer: {user_answer}"
-                )
-
-                st.write(
-                    f"Correct Answer: {q['answer']}"
-                )
-
-                st.info(
-                    f"Explanation: {q['explanation']}"
-                )
-
-        st.session_state.score = score
-
-        st.session_state.percentage = (
-            score / len(st.session_state.quiz)
-        ) * 100
-
-        st.markdown("---")
-
-        st.metric(
-            "🏆 Final Score",
-            f"{st.session_state.percentage:.2f}%"
-        )
-        if st.session_state.percentage >= 80:
-            st.balloons()
+        if user_answer == q["answer"]:
+            score += 1
             st.success(
-                "🏆 QUIZ CHAMPION!"
+                f"Question {i}: Correct"
             )
-
-        elif st.session_state.percentage >= 60:
-            st.success(
-                "🎉 Great Job!"
-            )
-
         else:
-            st.warning(
-                "💪 Keep Practicing!"
+            st.error(
+                f"Question {i}: Wrong"
             )
-        
+        st.write(
+            f"Your Answer: {user_answer}"
+        )
+        st.write(
+            f"Correct Answer: {q['answer']}"
+        )
+        st.info(
+            f"Explanation: {q['explanation']}"
+        )
 
-        # feedback
-        if not st.session_state.feedback:
-            with st.spinner(
-                "Generating AI Feedback..."
-            ):
-                st.session_state.feedback = generate_feedback(
-                    topic,
-                    difficulty,
-                    score,
-                    len(st.session_state.quiz)
-                )
+    st.session_state.score = score
 
-        st.subheader("🤖 AI Feedback")
+    st.session_state.percentage = (
+        score / len(st.session_state.quiz)
+    ) * 100
 
-        st.write(st.session_state.feedback)
+    st.markdown("---")
 
-        st.markdown("---")
+    st.metric(
+        "🏆 Final Score",
+        f"{st.session_state.percentage:.2f}%"
+    )
+    if st.session_state.percentage >= 80:
+        st.balloons()
+        st.success(
+            "🏆 QUIZ CHAMPION!"
+        )
 
-        
-        # history
-        if not st.session_state.history_saved:
-            with open("quiz_history.txt", "a") as file:
+    elif st.session_state.percentage >= 60:
+        st.success(
+            "🎉 Great Job!"
+        )
 
-                file.write(
-                    f"{datetime.now():%Y-%m-%d %H:%M} | "
-                    f"{topic} | "
-                    f"{difficulty} | "
-                    f"{score}/{len(st.session_state.quiz)} | "
-                    f"{st.session_state.percentage:.2f}%\n"
-                )
-            st.session_state.history_saved = True
+    else:
+        st.warning(
+            "💪 Keep Practicing!"
+        )
+    
+
+    # feedback
+    if not st.session_state.feedback:
+        with st.spinner(
+            "Generating AI Feedback..."
+        ):
+            st.session_state.feedback = generate_feedback(
+                topic,
+                difficulty,
+                score,
+                len(st.session_state.quiz)
+            )
+
+    st.subheader("🤖 AI Feedback")
+
+    st.write(st.session_state.feedback)
+
+    st.markdown("---")
+
+    
+    # history
+    if not st.session_state.history_saved:
+        with open("quiz_history.txt", "a") as file:
+
+            file.write(
+                f"{datetime.now():%Y-%m-%d %H:%M} | "
+                f"{topic} | "
+                f"{difficulty} | "
+                f"{score}/{len(st.session_state.quiz)} | "
+                f"{st.session_state.percentage:.2f}%\n"
+            )
+        st.session_state.history_saved = True
 
 
-        # new quiz
-        if st.button("🔄 Start New Quiz"):
+    # new quiz
+    if st.button("🔄 Start New Quiz"):
 
-            st.session_state.quiz = None
-            st.session_state.quiz_submitted = False
-            st.session_state.score = 0
-            st.session_state.percentage = 0
-            st.session_state.feedback = ""
-            st.session_state.history_saved = False
+        st.session_state.quiz = None
+        st.session_state.quiz_submitted = False
+        st.session_state.score = 0
+        st.session_state.percentage = 0
+        st.session_state.feedback = ""
+        st.session_state.history_saved = False
+        st.session_state.current_question = 0
+        st.session_state.user_answers = {}
+        st.session_state.topic_input = ""
+        st.session_state.difficulty_input = "Easy"
+        st.session_state.num_questions_input = 5
 
-            keys_to_remove = [
-                key
-                for key in list(st.session_state.keys())
-                if key.startswith("q")
-            ]
+        keys_to_remove = [
+            key
+            for key in list(st.session_state.keys())
+            if key.startswith("question_")
+        ]
 
-            for key in keys_to_remove:
-                del st.session_state[key]
+        for key in keys_to_remove:
+            del st.session_state[key]
 
-            st.rerun()
+        st.rerun()
