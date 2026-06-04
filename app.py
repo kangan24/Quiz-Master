@@ -15,6 +15,9 @@ import pandas as pd
 # Load API key
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    st.error("Gemini API key not found.")
+    st.stop()
 client = genai.Client(api_key=api_key)
 
 
