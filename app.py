@@ -77,6 +77,12 @@ if "current_question" not in st.session_state:
 if "user_answers" not in st.session_state:
     st.session_state.user_answers = {}
 
+if "timer_started" not in st.session_state:
+    st.session_state.timer_started = False
+
+if "quiz_start_time" not in st.session_state:
+    st.session_state.quiz_start_time = None
+
 
 # Generate Quiz
 def generate_quiz(topic, difficulty, num_questions):
@@ -294,6 +300,12 @@ num_questions = st.slider(
     key="num_questions_input"
 )
 
+quiz_time = st.selectbox(
+    "⏱ Quiz Time Limit",
+    [1, 2, 5, 10, 15],
+    index=2
+)
+
 # Generate Quiz
 if st.button("Generate Quiz"):
     if not topic:
@@ -315,11 +327,41 @@ if st.button("Generate Quiz"):
             st.session_state.current_question = 0
             st.session_state.user_answers = {}
 
+            st.session_state.timer_started = True
+            st.session_state.quiz_start_time = datetime.now()
+            st.session_state.quiz_time_limit = quiz_time
+
 
 # Display Quiz
 if st.session_state.quiz and not st.session_state.quiz_submitted:
 
     current = st.session_state.current_question
+    
+    elapsed = (
+        datetime.now() -
+        st.session_state.quiz_start_time
+    ).total_seconds()
+
+    remaining = (
+        st.session_state.quiz_time_limit * 60
+    ) - elapsed
+
+    if remaining <= 0:
+
+        st.warning(
+            "⏰ Time is up! Quiz submitted automatically."
+        )
+
+        st.session_state.quiz_submitted = True
+        st.rerun()
+
+    mins = int(remaining // 60)
+    secs = int(remaining % 60)
+
+    st.metric(
+        "⏱ Time Remaining",
+        f"{mins:02d}:{secs:02d}"
+    )
 
     q = st.session_state.quiz[current]
 
@@ -509,6 +551,8 @@ if st.session_state.quiz_submitted:
         st.session_state.topic_input = ""
         st.session_state.difficulty_input = "Easy"
         st.session_state.num_questions_input = 5
+        st.session_state.timer_started = False
+        st.session_state.quiz_start_time = None
 
         keys_to_remove = [
             key
