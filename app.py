@@ -1,16 +1,47 @@
-import streamlit as st
-st.set_page_config(
-    page_title="Quiz Master",
-    page_icon="🤖",
-    layout="wide"
-) 
-
 from dotenv import load_dotenv
 import os
 from google import genai
 import json
 from datetime import datetime
 import pandas as pd
+
+import streamlit as st
+
+st.set_option(
+    "client.showErrorDetails",
+    False
+)
+
+st.set_page_config(
+    page_title="Quiz Master",
+    page_icon="🤖",
+    layout="wide"
+) 
+
+
+st.markdown("""
+<style>
+
+.main {
+    padding-top: 1rem;
+}
+
+h1 {
+    text-align: center;
+    color: #FFD700;
+}
+
+.stButton > button {
+    width: 100%;
+    height: 3em;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 
 # Load API key
 load_dotenv()
@@ -67,7 +98,6 @@ def generate_quiz(topic, difficulty):
     """
 
     try:
-
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
@@ -75,19 +105,23 @@ def generate_quiz(topic, difficulty):
                 "response_mime_type": "application/json"
             }
         )
-
     except Exception as e:
-
-        st.error(f"Error generating quiz: {e}")
+        error_text = str(e)
+        if "RESOURCE_EXHAUSTED" in error_text:
+            st.error(
+                "⚠️ Gemini API quota exceeded. Please try again later."
+            )
+        else:
+            st.error(
+                "⚠️ Unable to generate quiz right now."
+            )
         return []
 
     try:
-
         quiz = json.loads(response.text)
         return quiz
 
     except json.JSONDecodeError:
-
         st.error("Failed to parse quiz data.")
         return []
 
@@ -114,27 +148,34 @@ def generate_feedback(topic, difficulty, score, total_questions):
     Keep it under 100 words point wise.
     """
 
-    report = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=report_prompt
-    )
+    try:
+        report = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=report_prompt
+        )
+        return report.text
 
-    return report.text
+    except Exception:
+        return """
+        ⚠️ AI Feedback is currently unavailable.
+        Please try again later.
+        """
 
 
 # STREAMLIT UI
 
-st.sidebar.title("Navigation")
+st.sidebar.title("🎯 Quiz Master")
 
 page = st.sidebar.radio(
-    "Choose Page",
-    ["Quiz", "History"]
+    "🎮 Menu",
+    ["🏆 Quiz Arena", "📊 Hall of Fame"]
 )
 
 # HISTORY PAGE
-if page == "History":
+if page == "📊 Hall of Fame":
 
     st.title("📊 Quiz History")
+    st.caption("Track your quiz performance over time")
 
     try:
 
@@ -162,7 +203,7 @@ if page == "History":
                     "Percentage"
                 ]
             )
-
+            df = df.iloc[::-1].reset_index(drop=True)
 
             best_score = max(
                 float(str(x).replace("%", ""))
@@ -209,12 +250,21 @@ if page == "History":
 
 # QUIZ PAGE
 
-st.title("🤖 Quiz Master")
+st.title("🏆 QUIZ CHALLENGE")
 
-topic = st.text_input("Enter Topic")
+st.markdown("""
+### 🎯 Test your knowledge on ANY topic!
+
+Choose a topic, challenge yourself,
+and see if you can become the Quiz Champion.
+""")
+
+topic = st.text_input(
+    "📚 Choose Your Quiz Topic"
+)
 
 difficulty = st.selectbox(
-    "Choose Difficulty",
+    "🎮 Select Difficulty",
     ["Easy", "Medium", "Hard"]
 )
 
@@ -248,7 +298,6 @@ if st.session_state.quiz:
         st.session_state.quiz,
         start=1
     ):
-
         st.subheader(f"Question {i}/5")
 
         st.write(q["question"])
@@ -315,23 +364,38 @@ if st.session_state.quiz:
 
         st.markdown("---")
 
-        st.subheader(
-            f"Score: {score}/{len(st.session_state.quiz)}"
+        st.metric(
+            "🏆 Final Score",
+            f"{st.session_state.percentage:.2f}%"
         )
+        if st.session_state.percentage >= 80:
+            st.balloons()
+            st.success(
+                "🏆 QUIZ CHAMPION!"
+            )
 
-        st.write(
-            f"Percentage: {st.session_state.percentage:.2f}%"
-        )
+        elif st.session_state.percentage >= 60:
+            st.success(
+                "🎉 Great Job!"
+            )
+
+        else:
+            st.warning(
+                "💪 Keep Practicing!"
+            )
+        
 
         # feedback
         if not st.session_state.feedback:
-
-            st.session_state.feedback = generate_feedback(
-                topic,
-                difficulty,
-                score,
-                len(st.session_state.quiz)
-            )
+            with st.spinner(
+                "Generating AI Feedback..."
+            ):
+                st.session_state.feedback = generate_feedback(
+                    topic,
+                    difficulty,
+                    score,
+                    len(st.session_state.quiz)
+                )
 
         st.subheader("🤖 AI Feedback")
 
